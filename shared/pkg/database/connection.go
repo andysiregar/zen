@@ -2,7 +2,7 @@ package database
 
 import (
 	"fmt"
-	"log"
+	"strconv"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -69,4 +69,23 @@ func HealthCheck(db *gorm.DB) error {
 		return err
 	}
 	return sqlDB.Ping()
+}
+
+// NewPostgresConnection creates a new PostgreSQL connection with string parameters
+func NewPostgresConnection(host, port, user, password, dbname, sslmode string) (*gorm.DB, error) {
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		portInt = 5432 // default PostgreSQL port
+	}
+	
+	config := Config{
+		Host:     host,
+		Port:     portInt,
+		User:     user,
+		Password: password,
+		DBName:   dbname,
+		SSLMode:  sslmode,
+	}
+	
+	return NewConnection(config)
 }

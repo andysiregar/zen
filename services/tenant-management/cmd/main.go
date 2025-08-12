@@ -11,6 +11,12 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	
+	"tenant-management/internal/config"
+	"tenant-management/internal/handlers"
+	"tenant-management/internal/repositories"
+	"tenant-management/internal/services"
+	"shared/pkg/database"
 )
 
 func main() {
@@ -18,11 +24,26 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	// Get port from environment or use default
-	port := os.Getenv("TENANT_SERVICE_PORT")
-	if port == "" {
-		port = "8001"
+	// Load configuration
+	cfg := config.Load()
+	
+	// Initialize database connection
+	db, err := database.NewPostgresConnection(
+		cfg.Database.MasterHost,
+		cfg.Database.MasterPort,
+		cfg.Database.MasterUser,
+		cfg.Database.MasterPassword,
+		cfg.Database.MasterDatabase,
+		cfg.Database.SSLMode,
+	)
+	if err != nil {
+		logger.Fatal("Failed to connect to database", zap.Error(err))
 	}
+	
+	// Initialize repository, service, and handler
+	tentantRepo := repositories.NewTenantRepository(db)
+	tenantService := services.NewTenantService(tentantRepo)
+	tenantHandler := handlers.NewTenantHandler(tenantService)
 
 	// Initialize Gin router
 	router := gin.New()
@@ -49,40 +70,28 @@ func main() {
 	// API versioning
 	v1 := router.Group("/api/v1")
 	{
-		// Tenant management routes - will be implemented later
+		// Tenant management routes
 		tenants := v1.Group("/tenants")
 		{
-			tenants.GET("/", func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{
-					"message": "List tenants endpoint",
-					"data":    []interface{}{},
-				})
-			})
-			
-			tenants.POST("/", func(c *gin.Context) {
-				c.JSON(http.StatusCreated, gin.H{
-					"message": "Create tenant endpoint",
-				})
-			})
-			
-			tenants.GET("/:id", func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{
-					"message": "Get tenant by ID endpoint",
-					"id":      c.Param("id"),
-				})
-			})
+			tenants.GET("/", tenantHandler.ListTenants)
+			tenants.POST("/", tenantHandler.CreateTenant)
+			tenants.GET("/search", tenantHandler.GetTenantByDomain)    // ?domain=example.com
+			tenants.GET("/subdomain", tenantHandler.GetTenantBySubdomain) // ?subdomain=demo
+			tenants.GET("/:id", tenantHandler.GetTenant)
+			tenants.PUT("/:id", tenantHandler.UpdateTenant)
+			tenants.DELETE("/:id", tenantHandler.DeleteTenant)
 		}
 	}
 
 	// Create HTTP server
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    ":" + cfg.Server.Port,
 		Handler: router,
 	}
 
 	// Start server in a goroutine
 	go func() {
-		logger.Info("Starting Tenant Management service", zap.String("port", port))
+		logger.Info("Starting Tenant Management service", zap.String("port", cfg.Server.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Failed to start server", zap.Error(err))
 		}
