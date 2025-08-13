@@ -3,7 +3,7 @@ package services
 import (
 	"fmt"
 	"strings"
-	"shared/pkg/models"
+	"github.com/zen/shared/pkg/models"
 	"tenant-management/internal/repositories"
 )
 

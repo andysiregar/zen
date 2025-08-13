@@ -1,0 +1,188 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test Go Services
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: saas_password
+          POSTGRES_USER: saas_user
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: |
+          cd shared && go mod download
+          cd ../services/api-gateway && go mod download
+          cd ../auth-service && go mod download
+          cd ../tenant-management && go mod download
+
+      - name: Run tests
+        env:
+          MASTER_DB_HOST: localhost
+          MASTER_DB_PORT: 5432
+          MASTER_DB_USER: saas_user
+          MASTER_DB_PASSWORD: saas_password
+          MASTER_DB_NAME: test_db
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: test-secret-key-for-ci
+        run: |
+          echo "Testing shared package..."
+          cd shared
+          if find . -name "*_test.go" | grep -q .; then
+            go test ./... -v
+          else
+            echo "No test files found in shared package - skipping tests"
+          fi
+          
+          echo "Testing API Gateway..."
+          cd ../services/api-gateway
+          if find . -name "*_test.go" | grep -q .; then
+            go test ./... -v
+          else
+            echo "No test files found in api-gateway - skipping tests"
+          fi
+          
+          echo "Testing Auth Service..."
+          cd ../auth-service
+          if find . -name "*_test.go" | grep -q .; then
+            go test ./... -v
+          else
+            echo "No test files found in auth-service - skipping tests"
+          fi
+          
+          echo "Testing Tenant Management..."
+          cd ../tenant-management
+          if find . -name "*_test.go" | grep -q .; then
+            go test ./... -v
+          else
+            echo "No test files found in tenant-management - skipping tests"
+          fi
+
+  lint:
+    name: Lint Go Code
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: golangci-lint shared
+        uses: golangci/golangci-lint-action@v4
+        continue-on-error: true
+        with:
+          version: latest
+          working-directory: shared
+          args: --timeout=5m
+
+      - name: golangci-lint API Gateway
+        uses: golangci/golangci-lint-action@v4
+        continue-on-error: true
+        with:
+          version: latest
+          working-directory: services/api-gateway
+          args: --timeout=5m
+
+      - name: golangci-lint Auth Service
+        uses: golangci/golangci-lint-action@v4
+        continue-on-error: true
+        with:
+          version: latest
+          working-directory: services/auth-service
+          args: --timeout=5m
+
+      - name: golangci-lint Tenant Management
+        uses: golangci/golangci-lint-action@v4
+        continue-on-error: true
+        with:
+          version: latest
+          working-directory: services/tenant-management
+          args: --timeout=5m
+
+  build:
+    name: Build Services
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build API Gateway
+        run: |
+          cd services/api-gateway
+          go build -o bin/api-gateway cmd/main.go
+
+      - name: Build Auth Service
+        run: |
+          cd services/auth-service
+          go build -o bin/auth-service cmd/main.go
+
+      - name: Build Tenant Management
+        run: |
+          cd services/tenant-management
+          go build -o bin/tenant-management cmd/main.go
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-binaries
+          path: |
+            services/*/bin/*
+          retention-days: 7

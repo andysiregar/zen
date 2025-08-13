@@ -2,7 +2,7 @@ package repositories
 
 import (
 	"time"
-	"shared/pkg/models"
+	"github.com/zen/shared/pkg/models"
 	"gorm.io/gorm"
 )
 
