@@ -27,20 +27,41 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
 
-      - name: Sync develop with main
+      - name: Smart sync develop with main
         run: |
-          echo "Current branch: $(git branch --show-current)"
-          echo "Fetching latest changes..."
+          echo "🔄 Starting smart branch sync..."
           git fetch origin main develop
           
-          echo "Checking out develop branch..."
-          git checkout develop
+          # Get the latest commit SHAs
+          MAIN_SHA=$(git rev-parse origin/main)
+          DEVELOP_SHA=$(git rev-parse origin/develop)
           
-          echo "Merging main into develop..."
-          git merge origin/main --no-edit
+          echo "📍 Main is at: $MAIN_SHA"
+          echo "📍 Develop is at: $DEVELOP_SHA"
           
-          echo "Pushing updated develop branch..."
-          git push origin develop
+          # Check if develop is behind main
+          if git merge-base --is-ancestor $DEVELOP_SHA $MAIN_SHA; then
+            echo "⬆️ Develop is behind main - fast-forwarding..."
+            git checkout develop
+            git reset --hard origin/main
+            git push origin develop --force-with-lease
+          elif git merge-base --is-ancestor $MAIN_SHA $DEVELOP_SHA; then
+            echo "✅ Develop is ahead of main - nothing to sync"
+          else
+            echo "🔀 Branches have diverged - rebasing develop onto main..."
+            git checkout develop
+            
+            # Try to rebase develop onto main
+            if git rebase origin/main; then
+              echo "✅ Rebase successful"
+              git push origin develop --force-with-lease
+            else
+              echo "❌ Rebase failed - falling back to merge"
+              git rebase --abort
+              git merge origin/main --no-edit
+              git push origin develop
+            fi
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

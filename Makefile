@@ -161,3 +161,8 @@ prod-build: ## Build production Docker images
 		cd services/$$service && docker build -t $$service:prod -f docker/Dockerfile.prod . && cd ../..; \
 	done
 	@echo "$(GREEN)All production images built!$(RESET)"
+
+# Git Branch Management
+sync-branches: ## Sync develop and main branches intelligently
+	@echo "$(YELLOW)Running branch synchronization script...$(RESET)"
+	@bash scripts/dev/sync-branches.sh
