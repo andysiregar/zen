@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
-	"shared/pkg/auth"
-	"shared/pkg/models"
-	"shared/pkg/utils"
+	"github.com/zen/shared/pkg/auth"
+	"github.com/zen/shared/pkg/models"
+	"github.com/zen/shared/pkg/utils"
 	"auth-service/internal/services"
 )
 

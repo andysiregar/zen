@@ -16,9 +16,9 @@ import (
 	"auth-service/internal/handlers"
 	"auth-service/internal/repositories"
 	"auth-service/internal/services"
-	"shared/pkg/auth"
-	"shared/pkg/database"
-	"shared/pkg/middleware"
+	"github.com/zen/shared/pkg/auth"
+	"github.com/zen/shared/pkg/database"
+	"github.com/zen/shared/pkg/middleware"
 )
 
 func main() {

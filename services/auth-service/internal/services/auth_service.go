@@ -3,7 +3,7 @@ package services
 import (
 	"fmt"
 	"golang.org/x/crypto/bcrypt"
-	"shared/pkg/models"
+	"github.com/zen/shared/pkg/models"
 	"auth-service/internal/repositories"
 )
 

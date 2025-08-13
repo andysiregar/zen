@@ -4,9 +4,9 @@ import (
 	"strconv"
 	
 	"github.com/gin-gonic/gin"
-	"shared/pkg/models"
+	"github.com/zen/shared/pkg/models"
 	"tenant-management/internal/services"
-	"shared/pkg/utils"
+	"github.com/zen/shared/pkg/utils"
 )
 
 type TenantHandler struct {

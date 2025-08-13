@@ -1,0 +1,58 @@
+run:
+  timeout: 5m
+  go: "1.21"
+
+linters:
+  enable:
+    - gofmt
+    - golint
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - typecheck
+    - ineffassign
+    - misspell
+    - gocyclo
+    - dupl
+    - gosec
+  disable:
+    - varnamelen
+    - exhaustruct
+    - exhaustive
+    - gochecknoglobals
+    - gochecknoinits
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 100
+  gosec:
+    excludes:
+      - G404 # Use of weak random number generator
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+    # Exclude unused in main.go files (often contains setup code)
+    - path: cmd/main\.go
+      linters:
+        - unused
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  format: github-actions
+  print-issued-line: false
+  print-linter-name: true
+  uniq-by-line: true
