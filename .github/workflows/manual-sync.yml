@@ -1,0 +1,84 @@
+name: Manual Branch Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_direction:
+        description: 'Sync direction'
+        required: true
+        default: 'main-to-develop'
+        type: choice
+        options:
+          - main-to-develop
+          - develop-to-main
+      force_sync:
+        description: 'Force sync (use with caution)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  manual-sync:
+    name: Manual Branch Synchronization
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Sync main to develop
+        if: github.event.inputs.sync_direction == 'main-to-develop'
+        run: |
+          echo "🔄 Manually syncing main → develop"
+          git fetch origin main develop
+          git checkout develop
+          
+          if [[ "${{ github.event.inputs.force_sync }}" == "true" ]]; then
+            echo "⚠️ Force sync enabled - resetting develop to main"
+            git reset --hard origin/main
+            git push origin develop --force-with-lease
+          else
+            echo "🔀 Smart merge main into develop"
+            if git merge origin/main --no-edit; then
+              git push origin develop
+            else
+              echo "❌ Merge conflict detected - manual resolution required"
+              exit 1
+            fi
+          fi
+
+      - name: Sync develop to main
+        if: github.event.inputs.sync_direction == 'develop-to-main'
+        run: |
+          echo "🔄 Manually syncing develop → main"
+          git fetch origin main develop
+          git checkout main
+          
+          if [[ "${{ github.event.inputs.force_sync }}" == "true" ]]; then
+            echo "⚠️ Force sync enabled - resetting main to develop"
+            git reset --hard origin/develop
+            git push origin main --force-with-lease
+          else
+            echo "🔀 Smart merge develop into main"
+            if git merge origin/develop --no-edit; then
+              git push origin main
+            else
+              echo "❌ Merge conflict detected - manual resolution required"
+              exit 1
+            fi
+          fi
+
+      - name: Summary
+        run: |
+          echo "✅ Manual sync completed"
+          echo "Direction: ${{ github.event.inputs.sync_direction }}"
+          echo "Force sync: ${{ github.event.inputs.force_sync }}"
+          git log --oneline -5
