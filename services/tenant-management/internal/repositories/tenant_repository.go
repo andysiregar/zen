@@ -1,15 +1,14 @@
 package repositories
 
 import (
-	"tenant-management/internal/models"
+	"shared/pkg/models"
 	"gorm.io/gorm"
 )
 
 type TenantRepository interface {
 	Create(tenant *models.Tenant) error
 	GetByID(id string) (*models.Tenant, error)
-	GetByDomain(domain string) (*models.Tenant, error)
-	GetBySubdomain(subdomain string) (*models.Tenant, error)
+	GetBySlug(slug string) (*models.Tenant, error)
 	Update(tenant *models.Tenant) error
 	Delete(id string) error
 	List(limit, offset int) ([]*models.Tenant, error)
@@ -37,18 +36,9 @@ func (r *tenantRepository) GetByID(id string) (*models.Tenant, error) {
 	return &tenant, nil
 }
 
-func (r *tenantRepository) GetByDomain(domain string) (*models.Tenant, error) {
+func (r *tenantRepository) GetBySlug(slug string) (*models.Tenant, error) {
 	var tenant models.Tenant
-	err := r.db.Where("domain = ?", domain).First(&tenant).Error
-	if err != nil {
-		return nil, err
-	}
-	return &tenant, nil
-}
-
-func (r *tenantRepository) GetBySubdomain(subdomain string) (*models.Tenant, error) {
-	var tenant models.Tenant
-	err := r.db.Where("subdomain = ?", subdomain).First(&tenant).Error
+	err := r.db.Where("slug = ?", slug).First(&tenant).Error
 	if err != nil {
 		return nil, err
 	}

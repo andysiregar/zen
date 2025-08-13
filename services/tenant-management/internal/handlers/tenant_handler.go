@@ -4,7 +4,7 @@ import (
 	"strconv"
 	
 	"github.com/gin-gonic/gin"
-	"tenant-management/internal/models"
+	"shared/pkg/models"
 	"tenant-management/internal/services"
 	"shared/pkg/utils"
 )
@@ -49,30 +49,14 @@ func (h *TenantHandler) GetTenant(c *gin.Context) {
 	utils.SuccessResponse(c, tenant, "Tenant retrieved successfully")
 }
 
-func (h *TenantHandler) GetTenantByDomain(c *gin.Context) {
-	domain := c.Query("domain")
-	if domain == "" {
-		utils.BadRequestResponse(c, "Domain query parameter is required")
+func (h *TenantHandler) GetTenantBySlug(c *gin.Context) {
+	slug := c.Query("slug")
+	if slug == "" {
+		utils.BadRequestResponse(c, "Slug query parameter is required")
 		return
 	}
 	
-	tenant, err := h.service.GetTenantByDomain(domain)
-	if err != nil {
-		utils.NotFoundResponse(c, "Tenant not found: "+err.Error())
-		return
-	}
-	
-	utils.SuccessResponse(c, tenant, "Tenant retrieved successfully")
-}
-
-func (h *TenantHandler) GetTenantBySubdomain(c *gin.Context) {
-	subdomain := c.Query("subdomain")
-	if subdomain == "" {
-		utils.BadRequestResponse(c, "Subdomain query parameter is required")
-		return
-	}
-	
-	tenant, err := h.service.GetTenantBySubdomain(subdomain)
+	tenant, err := h.service.GetTenantBySlug(slug)
 	if err != nil {
 		utils.NotFoundResponse(c, "Tenant not found: "+err.Error())
 		return

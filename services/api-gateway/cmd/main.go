@@ -11,6 +11,10 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"github.com/zen/shared/pkg/auth"
+	"github.com/zen/shared/pkg/database"
+	"api-gateway/internal/config"
+	"api-gateway/internal/handlers"
 )
 
 func main() {
@@ -18,11 +22,32 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	// Get port from environment or use default
-	port := os.Getenv("API_GATEWAY_PORT")
-	if port == "" {
-		port = "8000"
+	// Load configuration
+	cfg := config.LoadConfig()
+	
+	// Initialize JWT service
+	jwtService := auth.NewJWTService(
+		cfg.JWT.Secret, 
+		time.Duration(cfg.JWT.AccessTokenTTL)*time.Hour,
+		time.Duration(cfg.JWT.RefreshTokenTTL)*time.Hour,
+	)
+	
+	// Initialize database manager
+	masterDBConfig := database.Config{
+		Host:     cfg.MasterDatabase.MasterHost,
+		User:     cfg.MasterDatabase.MasterUser,
+		Password: cfg.MasterDatabase.MasterPassword,
+		DBName:   cfg.MasterDatabase.MasterDatabase,
+		Port:     5432, // Convert from string to int - could add strconv.Atoi if needed
+		SSLMode:  cfg.MasterDatabase.SSLMode,
 	}
+	dbManager, err := database.NewDatabaseManager(masterDBConfig, cfg.EncryptionKey)
+	if err != nil {
+		logger.Fatal("Failed to initialize database manager", zap.Error(err))
+	}
+	
+	// Initialize proxy handler
+	proxyHandler := handlers.NewProxyHandler(logger, jwtService, dbManager)
 
 	// Initialize Gin router
 	router := gin.New()
@@ -32,41 +57,61 @@ func main() {
 	router.Use(gin.Recovery())
 	
 	// CORS configuration
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true
-	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
-	router.Use(cors.New(config))
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization", "X-Tenant-Slug"}
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"}
+	router.Use(cors.New(corsConfig))
 
 	// Health check endpoint
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "healthy",
-			"service":   "api-gateway",
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
-		})
-	})
+	router.GET("/health", proxyHandler.HealthCheck())
 
-	// API versioning
+	// API Gateway routes
 	v1 := router.Group("/api/v1")
 	{
-		// Placeholder routes - will be implemented later
+		// Authentication service (no auth required)
+		auth := v1.Group("/auth")
+		auth.Any("/*path", proxyHandler.AuthProxy())
+		
+		// Tenant management (auth required)
+		tenant := v1.Group("/tenant")
+		tenant.Any("/*path", proxyHandler.TenantProxy())
+		
+		// Business services (auth + tenant required)
+		ticket := v1.Group("/ticket")
+		ticket.Any("/*path", proxyHandler.ServiceProxy("ticket"))
+		
+		project := v1.Group("/project") 
+		project.Any("/*path", proxyHandler.ServiceProxy("project"))
+		
+		chat := v1.Group("/chat")
+		chat.Any("/*path", proxyHandler.ServiceProxy("chat"))
+		
+		// Gateway status endpoint
 		v1.GET("/status", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"message": "API Gateway v1 is running",
 				"version": "1.0.0",
+				"services": map[string]string{
+					"auth":    "http://localhost:8002",
+					"tenant":  "http://localhost:8001",
+					"ticket":  "http://localhost:8004", 
+					"project": "http://localhost:8005",
+					"chat":    "http://localhost:8006",
+				},
 			})
 		})
 	}
 
 	// Create HTTP server
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    ":" + cfg.Server.Port,
 		Handler: router,
 	}
 
 	// Start server in a goroutine
 	go func() {
-		logger.Info("Starting API Gateway server", zap.String("port", port))
+		logger.Info("Starting API Gateway server", zap.String("port", cfg.Server.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Failed to start server", zap.Error(err))
 		}
