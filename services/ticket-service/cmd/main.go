@@ -13,10 +13,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	
-	"auth-service/internal/config"
-	"auth-service/internal/handlers"
-	"auth-service/internal/repositories"
-	"auth-service/internal/services"
+	"ticket-service/internal/config"
+	"ticket-service/internal/handlers"
+	"ticket-service/internal/repositories"
+	"ticket-service/internal/services"
 	"github.com/zen/shared/pkg/auth"
 	"github.com/zen/shared/pkg/database"
 	"github.com/zen/shared/pkg/middleware"
@@ -49,17 +49,21 @@ func main() {
 		logger.Fatal("Failed to create database manager", zap.Error(err))
 	}
 
-	// Initialize JWT service
+	// Initialize JWT service - use same secret as auth service
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "your-super-secret-jwt-key-change-in-production"
+	}
 	jwtService := auth.NewJWTService(
-		cfg.JWT.Secret,
-		time.Duration(cfg.JWT.AccessTokenTTL)*time.Hour,
-		time.Duration(cfg.JWT.RefreshTokenTTL)*time.Hour,
+		jwtSecret,    // Use same JWT secret as auth service
+		24*time.Hour, // 24 hours access token
+		7*24*time.Hour, // 7 days refresh token
 	)
-
+	
 	// Initialize repository, service, and handler
-	userRepo := repositories.NewUserRepository(dbManager.GetMasterDB())
-	authService := services.NewAuthService(userRepo)
-	authHandler := handlers.NewAuthHandler(authService, jwtService)
+	ticketRepo := repositories.NewTicketRepository(dbManager)
+	ticketService := services.NewTicketService(ticketRepo, logger)
+	ticketHandler := handlers.NewTicketHandler(ticketService, logger)
 
 	// Initialize Gin router
 	router := gin.New()
@@ -78,30 +82,45 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "healthy",
-			"service":   "auth-service",
+			"service":   "ticket-service",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 		})
 	})
 
 	// API versioning
 	v1 := router.Group("/api/v1")
+	
+	// All ticket routes require authentication and tenant context
+	tickets := v1.Group("/tickets")
+	tickets.Use(middleware.AuthMiddleware(jwtService))
+	tickets.Use(middleware.TenantMiddleware(dbManager, jwtService))
 	{
-		// Authentication routes
-		auth := v1.Group("/auth")
-		{
-			auth.POST("/login", authHandler.Login)
-			auth.POST("/register", authHandler.Register)
-			auth.POST("/refresh", authHandler.RefreshToken)
-			auth.POST("/logout", authHandler.Logout)
-		}
-
-		// User management routes (require authentication)
-		users := v1.Group("/users")
-		users.Use(middleware.AuthMiddleware(jwtService))
-		{
-			users.GET("/profile", authHandler.GetProfile)
-			users.PUT("/profile", authHandler.UpdateProfile)
-		}
+		// Ticket CRUD operations
+		tickets.GET("/", ticketHandler.ListTickets)
+		tickets.POST("/", ticketHandler.CreateTicket)
+		tickets.GET("/:id", ticketHandler.GetTicket)
+		tickets.PUT("/:id", ticketHandler.UpdateTicket)
+		tickets.DELETE("/:id", ticketHandler.DeleteTicket)
+		
+		// Ticket status management
+		tickets.PATCH("/:id/assign", ticketHandler.AssignTicket)
+		tickets.PATCH("/:id/status", ticketHandler.UpdateTicketStatus)
+		tickets.PATCH("/:id/priority", ticketHandler.UpdateTicketPriority)
+		
+		// Comments
+		tickets.GET("/:id/comments", ticketHandler.GetTicketComments)
+		tickets.POST("/:id/comments", ticketHandler.CreateTicketComment)
+		tickets.PUT("/comments/:comment_id", ticketHandler.UpdateComment)
+		tickets.DELETE("/comments/:comment_id", ticketHandler.DeleteComment)
+		
+		// Attachments
+		tickets.GET("/:id/attachments", ticketHandler.GetTicketAttachments)
+		tickets.POST("/:id/attachments", ticketHandler.UploadAttachment)
+		tickets.DELETE("/attachments/:attachment_id", ticketHandler.DeleteAttachment)
+		
+		// Search and filtering
+		tickets.GET("/search", ticketHandler.SearchTickets)
+		tickets.GET("/stats", ticketHandler.GetTicketStats)
 	}
 
 	// Create HTTP server
@@ -112,7 +131,7 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		logger.Info("Starting Authentication service", zap.String("port", cfg.Server.Port))
+		logger.Info("Starting Ticket Service", zap.String("port", cfg.Server.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Failed to start server", zap.Error(err))
 		}
@@ -123,7 +142,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	
-	logger.Info("Shutting down Authentication service...")
+	logger.Info("Shutting down Ticket Service...")
 
 	// Graceful shutdown with 30 second timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -133,5 +152,5 @@ func main() {
 		logger.Fatal("Server forced to shutdown", zap.Error(err))
 	}
 
-	logger.Info("Authentication service exited")
+	logger.Info("Ticket Service exited")
 }

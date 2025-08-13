@@ -22,17 +22,22 @@ type Tenant struct {
 	Description    string       `json:"description" gorm:"type:text"`
 	Status         TenantStatus `json:"status" gorm:"type:varchar(20);default:'active'"`
 	
+	// Domain and subdomain (required by database schema)
+	Domain        string `json:"domain" gorm:"not null;size:255"`
+	Subdomain     string `json:"subdomain" gorm:"not null;size:63"`
+	DatabaseName  string `json:"database_name" gorm:"not null;size:63"`
+	
 	// Database Connection Details (CRITICAL)
-	DbHost              string `json:"db_host" gorm:"not null;size:255"`
+	DbHost              string `json:"db_host" gorm:"size:255;default:'localhost'"`
 	DbPort              int    `json:"db_port" gorm:"default:5432"`
 	DbName              string `json:"db_name" gorm:"not null;size:100"`
 	DbUser              string `json:"db_user" gorm:"not null;size:100"`
 	DbPasswordEncrypted string `json:"-" gorm:"not null;type:text"` // Encrypted connection password
-	DbSslMode           string `json:"db_ssl_mode" gorm:"size:20;default:'require'"`
+	DbSslMode           string `json:"db_ssl_mode" gorm:"size:20;default:'disable'"`
 	
 	// Configuration
 	Settings JSONB `json:"settings" gorm:"type:jsonb;default:'{}'"`   // Tenant-specific settings
-	Features JSONB `json:"features" gorm:"type:jsonb;default:'{}'"`   // Enabled features
+	Features JSONB `json:"features" gorm:"type:jsonb;default:'[]'"`   // Enabled features
 	
 	// Status
 	ProvisionedAt *time.Time `json:"provisioned_at"`

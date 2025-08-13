@@ -3,7 +3,9 @@ package services
 import (
 	"fmt"
 	"strings"
+	"time"
 	"github.com/zen/shared/pkg/models"
+	"github.com/zen/shared/pkg/database"
 	"tenant-management/internal/repositories"
 )
 
@@ -17,40 +19,86 @@ type TenantService interface {
 }
 
 type tenantService struct {
-	repo repositories.TenantRepository
+	repo      repositories.TenantRepository
+	dbManager *database.DatabaseManager
 }
 
-func NewTenantService(repo repositories.TenantRepository) TenantService {
-	return &tenantService{repo: repo}
+func NewTenantService(repo repositories.TenantRepository, dbManager *database.DatabaseManager) TenantService {
+	return &tenantService{
+		repo:      repo,
+		dbManager: dbManager,
+	}
 }
 
 func (s *tenantService) CreateTenant(req models.TenantCreateRequest) (*models.TenantResponse, error) {
+	// Validate slug uniqueness
+	existingTenant, err := s.repo.GetBySlug(req.Slug)
+	if err == nil && existingTenant != nil {
+		return nil, fmt.Errorf("tenant with slug '%s' already exists", req.Slug)
+	}
+
 	// Generate database name from slug
 	databaseName := fmt.Sprintf("tenant_%s", strings.ToLower(req.Slug))
 	
+	// Generate domain and subdomain from slug
+	domain := fmt.Sprintf("%s.localhost", req.Slug)
+	subdomain := req.Slug
+
 	tenant := &models.Tenant{
 		OrganizationID:      req.OrganizationID,
 		Name:                req.Name,
 		Slug:                req.Slug,
 		Description:         req.Description,
 		Status:              models.TenantStatusProvisioning,
+		
+		// Database fields
 		DbHost:              "localhost", // Default to localhost for now
 		DbPort:              5432,
 		DbName:              databaseName,
 		DbUser:              "tenant_user", // Will be configured properly later
 		DbPasswordEncrypted: "encrypted_password", // Will be encrypted properly later
-		DbSslMode:           "require",
+		DbSslMode:           "disable", // Match database default
+		
+		// Required schema fields
+		Domain:        domain,
+		Subdomain:     subdomain, 
+		DatabaseName:  databaseName,
+		
+		// Settings
 		Settings:            make(models.JSONB),
 		Features:            make(models.JSONB),
 	}
 	
-	err := s.repo.Create(tenant)
+	// Create tenant record first
+	err = s.repo.Create(tenant)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tenant: %w", err)
 	}
+
+	// Provision tenant database (async in production)
+	go s.provisionTenantDatabase(tenant)
 	
 	response := tenant.ToResponse()
 	return &response, nil
+}
+
+// provisionTenantDatabase creates the actual database and sets up schema
+func (s *tenantService) provisionTenantDatabase(tenant *models.Tenant) {
+	// In production, this would:
+	// 1. Create a new database
+	// 2. Create tenant-specific user and password
+	// 3. Run migrations on the new database
+	// 4. Update tenant status to active
+	
+	// For now, simulate the provisioning process
+	time.Sleep(2 * time.Second) // Simulate provisioning time
+	
+	// Update tenant status to active
+	tenant.Status = models.TenantStatusActive
+	now := time.Now()
+	tenant.ProvisionedAt = &now
+	
+	s.repo.Update(tenant)
 }
 
 func (s *tenantService) GetTenant(id string) (*models.TenantResponse, error) {
