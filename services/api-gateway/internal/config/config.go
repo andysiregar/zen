@@ -6,11 +6,12 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
-	Logger   LoggerConfig
+	Server         ServerConfig
+	MasterDatabase DatabaseConfig
+	Redis          RedisConfig
+	JWT            JWTConfig
+	Logger         LoggerConfig
+	EncryptionKey  string
 }
 
 type ServerConfig struct {
@@ -47,6 +48,10 @@ type LoggerConfig struct {
 	Format string // json or console
 }
 
+func LoadConfig() *Config {
+	return Load()
+}
+
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -55,7 +60,7 @@ func Load() *Config {
 			ReadTimeout:  getEnvAsInt("READ_TIMEOUT", 30),
 			WriteTimeout: getEnvAsInt("WRITE_TIMEOUT", 30),
 		},
-		Database: DatabaseConfig{
+		MasterDatabase: DatabaseConfig{
 			MasterHost:     getEnv("MASTER_DB_HOST", "localhost"),
 			MasterUser:     getEnv("MASTER_DB_USER", "saas_user"),
 			MasterPassword: getEnv("MASTER_DB_PASSWORD", "saas_password"),
@@ -78,6 +83,7 @@ func Load() *Config {
 			Level:  getEnv("LOG_LEVEL", "info"),
 			Format: getEnv("LOG_FORMAT", "json"),
 		},
+		EncryptionKey: getEnv("ENCRYPTION_KEY", "your-32-byte-encryption-key-here"),
 	}
 }
 

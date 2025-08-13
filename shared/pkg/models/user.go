@@ -23,14 +23,14 @@ const (
 )
 
 type User struct {
-	ID           string     `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	TenantID     string     `json:"tenant_id" gorm:"type:uuid;not null;index"`
-	Email        string     `json:"email" gorm:"uniqueIndex:idx_tenant_email;not null;size:255"`
-	Password     string     `json:"-" gorm:"not null;size:255"`
-	FirstName    string     `json:"first_name" gorm:"not null;size:100"`
-	LastName     string     `json:"last_name" gorm:"not null;size:100"`
-	Role         UserRole   `json:"role" gorm:"type:varchar(20);default:'user'"`
-	Status       UserStatus `json:"status" gorm:"type:varchar(20);default:'pending'"`
+	ID             string     `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	OrganizationID string     `json:"organization_id" gorm:"type:uuid;not null;index"`
+	Email          string     `json:"email" gorm:"uniqueIndex;not null;size:255"`
+	Password       string     `json:"-" gorm:"not null;size:255"`
+	FirstName      string     `json:"first_name" gorm:"not null;size:100"`
+	LastName       string     `json:"last_name" gorm:"not null;size:100"`
+	Role           UserRole   `json:"role" gorm:"type:varchar(20);default:'user'"`
+	Status         UserStatus `json:"status" gorm:"type:varchar(20);default:'pending'"`
 	
 	// Profile information
 	Avatar       string    `json:"avatar" gorm:"size:500"`
@@ -58,15 +58,15 @@ type User struct {
 }
 
 type UserCreateRequest struct {
-	TenantID  string   `json:"tenant_id" binding:"required,uuid"`
-	Email     string   `json:"email" binding:"required,email"`
-	Password  string   `json:"password" binding:"required,min=8,max=128"`
-	FirstName string   `json:"first_name" binding:"required,min=2,max=100"`
-	LastName  string   `json:"last_name" binding:"required,min=2,max=100"`
-	Role      UserRole `json:"role,omitempty"`
-	Phone     string   `json:"phone,omitempty"`
-	Timezone  string   `json:"timezone,omitempty"`
-	Language  string   `json:"language,omitempty"`
+	OrganizationID string   `json:"organization_id" binding:"required,uuid"`
+	Email          string   `json:"email" binding:"required,email"`
+	Password       string   `json:"password" binding:"required,min=8,max=128"`
+	FirstName      string   `json:"first_name" binding:"required,min=2,max=100"`
+	LastName       string   `json:"last_name" binding:"required,min=2,max=100"`
+	Role           UserRole `json:"role,omitempty"`
+	Phone          string   `json:"phone,omitempty"`
+	Timezone       string   `json:"timezone,omitempty"`
+	Language       string   `json:"language,omitempty"`
 }
 
 type UserUpdateRequest struct {
@@ -81,28 +81,28 @@ type UserUpdateRequest struct {
 }
 
 type UserLoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
-	TenantID string `json:"tenant_id,omitempty"`
+	Email          string `json:"email" binding:"required,email"`
+	Password       string `json:"password" binding:"required"`
+	OrganizationID string `json:"organization_id,omitempty"`
 }
 
 type UserResponse struct {
-	ID              string     `json:"id"`
-	TenantID        string     `json:"tenant_id"`
-	Email           string     `json:"email"`
-	FirstName       string     `json:"first_name"`
-	LastName        string     `json:"last_name"`
-	Role            UserRole   `json:"role"`
-	Status          UserStatus `json:"status"`
-	Avatar          string     `json:"avatar"`
-	Phone           string     `json:"phone"`
-	Timezone        string     `json:"timezone"`
-	Language        string     `json:"language"`
-	EmailVerified   bool       `json:"email_verified"`
+	ID             string     `json:"id"`
+	OrganizationID string     `json:"organization_id"`
+	Email          string     `json:"email"`
+	FirstName      string     `json:"first_name"`
+	LastName       string     `json:"last_name"`
+	Role           UserRole   `json:"role"`
+	Status         UserStatus `json:"status"`
+	Avatar         string     `json:"avatar"`
+	Phone          string     `json:"phone"`
+	Timezone       string     `json:"timezone"`
+	Language       string     `json:"language"`
+	EmailVerified  bool       `json:"email_verified"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at"`
-	LastLoginAt     *time.Time `json:"last_login_at"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	LastLoginAt    *time.Time `json:"last_login_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type AuthResponse struct {
@@ -120,22 +120,22 @@ func (User) TableName() string {
 // ToResponse converts a User model to UserResponse
 func (u *User) ToResponse() UserResponse {
 	return UserResponse{
-		ID:              u.ID,
-		TenantID:        u.TenantID,
-		Email:           u.Email,
-		FirstName:       u.FirstName,
-		LastName:        u.LastName,
-		Role:            u.Role,
-		Status:          u.Status,
-		Avatar:          u.Avatar,
-		Phone:           u.Phone,
-		Timezone:        u.Timezone,
-		Language:        u.Language,
-		EmailVerified:   u.EmailVerified,
+		ID:             u.ID,
+		OrganizationID: u.OrganizationID,
+		Email:          u.Email,
+		FirstName:      u.FirstName,
+		LastName:       u.LastName,
+		Role:           u.Role,
+		Status:         u.Status,
+		Avatar:         u.Avatar,
+		Phone:          u.Phone,
+		Timezone:       u.Timezone,
+		Language:       u.Language,
+		EmailVerified:  u.EmailVerified,
 		EmailVerifiedAt: u.EmailVerifiedAt,
-		LastLoginAt:     u.LastLoginAt,
-		CreatedAt:       u.CreatedAt,
-		UpdatedAt:       u.UpdatedAt,
+		LastLoginAt:    u.LastLoginAt,
+		CreatedAt:      u.CreatedAt,
+		UpdatedAt:      u.UpdatedAt,
 	}
 }
 

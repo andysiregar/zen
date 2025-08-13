@@ -9,11 +9,12 @@ import (
 )
 
 type Claims struct {
-	UserID      string   `json:"user_id"`
-	TenantID    string   `json:"tenant_id"`
-	Email       string   `json:"email"`
-	Role        string   `json:"role"`
-	Permissions []string `json:"permissions"`
+	UserID         string   `json:"user_id"`
+	TenantID       string   `json:"tenant_id"`
+	OrganizationID string   `json:"organization_id"`
+	Email          string   `json:"email"`
+	Role           string   `json:"role"`
+	Permissions    []string `json:"permissions"`
 	jwt.RegisteredClaims
 }
 
@@ -36,14 +37,15 @@ func NewJWTService(secretKey string, accessTTL, refreshTTL time.Duration) *JWTSe
 	}
 }
 
-func (j *JWTService) GenerateTokenPair(userID, tenantID, email, role string, permissions []string) (*TokenPair, error) {
+func (j *JWTService) GenerateTokenPair(userID, tenantID, organizationID, email, role string, permissions []string) (*TokenPair, error) {
 	// Generate access token
 	accessClaims := &Claims{
-		UserID:      userID,
-		TenantID:    tenantID,
-		Email:       email,
-		Role:        role,
-		Permissions: permissions,
+		UserID:         userID,
+		TenantID:       tenantID,
+		OrganizationID: organizationID,
+		Email:          email,
+		Role:           role,
+		Permissions:    permissions,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.New().String(),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

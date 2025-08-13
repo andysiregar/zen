@@ -11,6 +11,14 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	
+	"auth-service/internal/config"
+	"auth-service/internal/handlers"
+	"auth-service/internal/repositories"
+	"auth-service/internal/services"
+	"shared/pkg/auth"
+	"shared/pkg/database"
+	"shared/pkg/middleware"
 )
 
 func main() {
@@ -18,11 +26,33 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	// Get port from environment or use default
-	port := os.Getenv("AUTH_SERVICE_PORT")
-	if port == "" {
-		port = "8002"
+	// Load configuration
+	cfg := config.Load()
+	
+	// Initialize database connection
+	db, err := database.NewPostgresConnection(
+		cfg.MasterDatabase.MasterHost,
+		cfg.MasterDatabase.MasterPort,
+		cfg.MasterDatabase.MasterUser,
+		cfg.MasterDatabase.MasterPassword,
+		cfg.MasterDatabase.MasterDatabase,
+		cfg.MasterDatabase.SSLMode,
+	)
+	if err != nil {
+		logger.Fatal("Failed to connect to database", zap.Error(err))
 	}
+
+	// Initialize JWT service
+	jwtService := auth.NewJWTService(
+		cfg.JWT.Secret,
+		time.Duration(cfg.JWT.AccessTokenTTL)*time.Hour,
+		time.Duration(cfg.JWT.RefreshTokenTTL)*time.Hour,
+	)
+
+	// Initialize repository, service, and handler
+	userRepo := repositories.NewUserRepository(db)
+	authService := services.NewAuthService(userRepo)
+	authHandler := handlers.NewAuthHandler(authService, jwtService)
 
 	// Initialize Gin router
 	router := gin.New()
@@ -49,60 +79,33 @@ func main() {
 	// API versioning
 	v1 := router.Group("/api/v1")
 	{
-		// Authentication routes - will be implemented later
+		// Authentication routes
 		auth := v1.Group("/auth")
 		{
-			auth.POST("/login", func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{
-					"message": "Login endpoint",
-				})
-			})
-			
-			auth.POST("/register", func(c *gin.Context) {
-				c.JSON(http.StatusCreated, gin.H{
-					"message": "Register endpoint",
-				})
-			})
-			
-			auth.POST("/refresh", func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{
-					"message": "Token refresh endpoint",
-				})
-			})
-			
-			auth.POST("/logout", func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{
-					"message": "Logout endpoint",
-				})
-			})
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/register", authHandler.Register)
+			auth.POST("/refresh", authHandler.RefreshToken)
+			auth.POST("/logout", authHandler.Logout)
 		}
 
-		// User management routes
+		// User management routes (require authentication)
 		users := v1.Group("/users")
+		users.Use(middleware.AuthMiddleware(jwtService))
 		{
-			users.GET("/profile", func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{
-					"message": "Get user profile endpoint",
-				})
-			})
-			
-			users.PUT("/profile", func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{
-					"message": "Update user profile endpoint",
-				})
-			})
+			users.GET("/profile", authHandler.GetProfile)
+			users.PUT("/profile", authHandler.UpdateProfile)
 		}
 	}
 
 	// Create HTTP server
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    ":" + cfg.Server.Port,
 		Handler: router,
 	}
 
 	// Start server in a goroutine
 	go func() {
-		logger.Info("Starting Authentication service", zap.String("port", port))
+		logger.Info("Starting Authentication service", zap.String("port", cfg.Server.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Failed to start server", zap.Error(err))
 		}
