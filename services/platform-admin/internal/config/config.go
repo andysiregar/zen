@@ -3,48 +3,71 @@ package config
 import (
 	"os"
 	"strconv"
-
-	"github.com/zen/shared/pkg/database"
-	"github.com/zen/shared/pkg/redis"
 )
 
 type Config struct {
-	Environment string
-	Port        string
-	Database    *database.Config
-	Redis       *redis.Config
-	JWT         *JWTConfig
+	Server         ServerConfig
+	MasterDatabase DatabaseConfig
+	Redis          RedisConfig
+	Logger         LoggerConfig
+	EncryptionKey  string
 }
 
-type JWTConfig struct {
-	SecretKey        string
-	AccessTokenTTL   int // hours
-	RefreshTokenTTL  int // hours
+type ServerConfig struct {
+	Port         string
+	Environment  string
+	ReadTimeout  int
+	WriteTimeout int
+}
+
+type DatabaseConfig struct {
+	MasterHost     string
+	MasterUser     string
+	MasterPassword string
+	MasterDatabase string
+	MasterPort     string
+	SSLMode        string
+}
+
+type RedisConfig struct {
+	Host     string
+	Port     string
+	Password string
+	Database int
+}
+
+type LoggerConfig struct {
+	Level string
+	Format string // json or console
 }
 
 func Load() *Config {
 	return &Config{
-		Environment: getEnv("ENVIRONMENT", "development"),
-		Port:        getEnv("PLATFORM_ADMIN_PORT", "8014"),
-		Database: &database.Config{
+		Server: ServerConfig{
+			Port:         getEnv("PLATFORM_ADMIN_PORT", "8014"),
+			Environment:  getEnv("ENVIRONMENT", "development"),
+			ReadTimeout:  getEnvAsInt("READ_TIMEOUT", 30),
+			WriteTimeout: getEnvAsInt("WRITE_TIMEOUT", 30),
+		},
+		MasterDatabase: DatabaseConfig{
 			MasterHost:     getEnv("MASTER_DB_HOST", "localhost"),
-			MasterPort:     getEnv("MASTER_DB_PORT", "5432"),
 			MasterUser:     getEnv("MASTER_DB_USER", "saas_user"),
 			MasterPassword: getEnv("MASTER_DB_PASSWORD", "saas_password"),
-			MasterDBName:   getEnv("MASTER_DB_NAME", "master_db"),
+			MasterDatabase: getEnv("MASTER_DB_NAME", "master_db"),
+			MasterPort:     getEnv("MASTER_DB_PORT", "5432"),
 			SSLMode:        getEnv("DB_SSL_MODE", "disable"),
 		},
-		Redis: &redis.Config{
+		Redis: RedisConfig{
 			Host:     getEnv("REDIS_HOST", "localhost"),
 			Port:     getEnv("REDIS_PORT", "6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
-			DB:       getEnvAsInt("REDIS_DB", 0),
+			Database: getEnvAsInt("REDIS_DB", 0),
 		},
-		JWT: &JWTConfig{
-			SecretKey:       getEnv("PLATFORM_JWT_SECRET", "your-platform-admin-secret-key"),
-			AccessTokenTTL:  getEnvAsInt("PLATFORM_JWT_ACCESS_TTL", 24),  // 24 hours
-			RefreshTokenTTL: getEnvAsInt("PLATFORM_JWT_REFRESH_TTL", 168), // 7 days
+		Logger: LoggerConfig{
+			Level:  getEnv("LOG_LEVEL", "info"),
+			Format: getEnv("LOG_FORMAT", "json"),
 		},
+		EncryptionKey: getEnv("ENCRYPTION_KEY", "your-32-byte-encryption-key-here"),
 	}
 }
 

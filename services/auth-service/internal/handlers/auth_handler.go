@@ -1,22 +1,26 @@
 package handlers
 
 import (
+	"net/url"
 	"github.com/gin-gonic/gin"
 	"github.com/zen/shared/pkg/auth"
 	"github.com/zen/shared/pkg/models"
 	"github.com/zen/shared/pkg/utils"
+	"github.com/zen/shared/pkg/routing"
 	"auth-service/internal/services"
 )
 
 type AuthHandler struct {
-	authService services.AuthService
-	jwtService  *auth.JWTService
+	authService     services.AuthService
+	jwtService      *auth.JWTService
+	regionalRouter  *routing.RegionalRouter
 }
 
-func NewAuthHandler(authService services.AuthService, jwtService *auth.JWTService) *AuthHandler {
+func NewAuthHandler(authService services.AuthService, jwtService *auth.JWTService, regionalRouter *routing.RegionalRouter) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
-		jwtService:  jwtService,
+		authService:    authService,
+		jwtService:     jwtService,
+		regionalRouter: regionalRouter,
 	}
 }
 
@@ -41,6 +45,7 @@ type AuthResponse struct {
 	AccessToken  string               `json:"access_token"`
 	RefreshToken string               `json:"refresh_token"`
 	ExpiresIn    int                  `json:"expires_in"` // seconds
+	RedirectURL  string               `json:"redirect_url,omitempty"` // Regional redirect after auth
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -202,4 +207,80 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, user, "Profile updated successfully")
+}
+
+// LoginWithRedirect handles authentication with regional routing support
+// Used when users come from custom domains and need to be redirected to their regional portal
+func (h *AuthHandler) LoginWithRedirect(c *gin.Context) {
+	var req LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequestResponse(c, "Invalid request body: "+err.Error())
+		return
+	}
+
+	// Get redirect parameters
+	returnURL := c.Query("return_url")
+	// customDomain := c.Query("custom_domain") // Reserved for future use
+
+	// Authenticate user
+	user, err := h.authService.AuthenticateUser(req.Email, req.Password)
+	if err != nil {
+		utils.UnauthorizedResponse(c, "Invalid email or password")
+		return
+	}
+
+	// If return URL is provided, extract tenant information and redirect
+	var redirectURL string
+	if returnURL != "" {
+		// Decode the return URL
+		decodedURL, err := url.QueryUnescape(returnURL)
+		if err == nil {
+			redirectURL = decodedURL
+		}
+	}
+
+	// Generate JWT tokens
+	tokenPair, err := h.jwtService.GenerateTokenPair(
+		user.ID,
+		"", // TenantID will be set when user accesses tenant portal
+		user.OrganizationID,
+		user.Email,
+		string(user.Role),
+		[]string{}, // TODO: Implement permissions
+	)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, "Failed to generate tokens")
+		return
+	}
+
+	response := AuthResponse{
+		User:         user,
+		AccessToken:  tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		ExpiresIn:    24 * 3600, // 24 hours in seconds
+		RedirectURL:  redirectURL,
+	}
+
+	utils.SuccessResponse(c, response, "Login successful")
+}
+
+// HandleCustomDomain handles requests from custom domains
+// Redirects to appropriate regional authentication
+func (h *AuthHandler) HandleCustomDomain(c *gin.Context) {
+	host := c.Request.Host
+	
+	// Check if it's a custom domain
+	isCustom, domain := h.regionalRouter.ParseCustomDomain(host)
+	if !isCustom {
+		utils.BadRequestResponse(c, "Not a custom domain")
+		return
+	}
+
+	// TODO: Look up tenant by custom domain to get region info
+	// For now, we'll return instructions for the client to handle
+	utils.SuccessResponse(c, gin.H{
+		"custom_domain": domain,
+		"auth_url": "https://chilldesk.io/auth/login",
+		"message": "Please authenticate through the main portal",
+	}, "Custom domain detected")
 }

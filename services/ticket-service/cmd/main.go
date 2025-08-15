@@ -36,8 +36,8 @@ func main() {
 		logger.Fatal("Invalid master database port", zap.Error(err))
 	}
 
-	// Initialize database manager
-	dbManager, err := database.NewDatabaseManager(database.Config{
+	// Initialize database manager (for master database - tenant metadata)
+	masterDBManager, err := database.NewDatabaseManager(database.Config{
 		Host:     cfg.MasterDatabase.MasterHost,
 		Port:     port,
 		User:     cfg.MasterDatabase.MasterUser,
@@ -46,7 +46,7 @@ func main() {
 		SSLMode:  cfg.MasterDatabase.SSLMode,
 	}, cfg.EncryptionKey)
 	if err != nil {
-		logger.Fatal("Failed to create database manager", zap.Error(err))
+		logger.Fatal("Failed to create master database manager", zap.Error(err))
 	}
 
 	// Initialize JWT service - use same secret as auth service
@@ -60,8 +60,11 @@ func main() {
 		7*24*time.Hour, // 7 days refresh token
 	)
 	
+	// Initialize tenant database manager
+	tenantDBManager := database.NewTenantDatabaseManager(masterDBManager.GetMasterDB(), cfg.EncryptionKey)
+
 	// Initialize repository, service, and handler
-	ticketRepo := repositories.NewTicketRepository(dbManager)
+	ticketRepo := repositories.NewTicketRepository(tenantDBManager)
 	ticketService := services.NewTicketService(ticketRepo, logger)
 	ticketHandler := handlers.NewTicketHandler(ticketService, logger)
 
@@ -93,7 +96,7 @@ func main() {
 	// All ticket routes require authentication and tenant context
 	tickets := v1.Group("/tickets")
 	tickets.Use(middleware.AuthMiddleware(jwtService))
-	tickets.Use(middleware.TenantMiddleware(dbManager, jwtService))
+	tickets.Use(middleware.TenantMiddleware(masterDBManager, jwtService))
 	{
 		// Ticket CRUD operations
 		tickets.GET("/", ticketHandler.ListTickets)

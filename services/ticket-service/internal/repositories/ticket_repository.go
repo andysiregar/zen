@@ -65,35 +65,17 @@ type TicketStats struct {
 }
 
 type ticketRepository struct {
-	dbManager *database.DatabaseManager
+	tenantDBManager *database.TenantDatabaseManager
 }
 
-func NewTicketRepository(dbManager *database.DatabaseManager) TicketRepository {
+func NewTicketRepository(tenantDBManager *database.TenantDatabaseManager) TicketRepository {
 	return &ticketRepository{
-		dbManager: dbManager,
+		tenantDBManager: tenantDBManager,
 	}
 }
 
 func (r *ticketRepository) getTenantDB(tenantID string) (*gorm.DB, error) {
-	// Get tenant connection info from master database
-	var tenant models.Tenant
-	err := r.dbManager.GetMasterDB().Where("id = ?", tenantID).First(&tenant).Error
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tenant info: %w", err)
-	}
-
-	// Create TenantConnectionInfo
-	connInfo := database.TenantConnectionInfo{
-		TenantID:          tenantID,
-		Host:              tenant.DbHost,
-		Port:              tenant.DbPort,
-		User:              tenant.DbUser,
-		EncryptedPassword: tenant.DbPasswordEncrypted,
-		DBName:            tenant.DbName,
-		SSLMode:           tenant.DbSslMode,
-	}
-
-	return r.dbManager.GetTenantDB(connInfo)
+	return r.tenantDBManager.GetTenantDB(tenantID)
 }
 
 func (r *ticketRepository) Create(tenantID string, ticket *models.Ticket) error {

@@ -20,6 +20,7 @@ import (
 	"github.com/zen/shared/pkg/auth"
 	"github.com/zen/shared/pkg/database"
 	"github.com/zen/shared/pkg/middleware"
+	"github.com/zen/shared/pkg/routing"
 )
 
 func main() {
@@ -56,10 +57,13 @@ func main() {
 		time.Duration(cfg.JWT.RefreshTokenTTL)*time.Hour,
 	)
 
+	// Initialize regional router
+	regionalRouter := routing.NewRegionalRouter("chilldesk.io")
+	
 	// Initialize repository, service, and handler
 	userRepo := repositories.NewUserRepository(dbManager.GetMasterDB())
 	authService := services.NewAuthService(userRepo)
-	authHandler := handlers.NewAuthHandler(authService, jwtService)
+	authHandler := handlers.NewAuthHandler(authService, jwtService, regionalRouter)
 
 	// Initialize Gin router
 	router := gin.New()
@@ -90,9 +94,11 @@ func main() {
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/login-redirect", authHandler.LoginWithRedirect) // Regional routing support
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/refresh", authHandler.RefreshToken)
 			auth.POST("/logout", authHandler.Logout)
+			auth.GET("/custom-domain", authHandler.HandleCustomDomain) // Custom domain detection
 		}
 
 		// User management routes (require authentication)

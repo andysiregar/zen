@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/zen/shared/pkg/auth"
 	"github.com/zen/shared/pkg/database"
+	"github.com/zen/shared/pkg/routing"
 	"api-gateway/internal/config"
 	"api-gateway/internal/handlers"
 )
@@ -46,8 +47,11 @@ func main() {
 		logger.Fatal("Failed to initialize database manager", zap.Error(err))
 	}
 	
+	// Initialize regional router
+	regionalRouter := routing.NewRegionalRouter("chilldesk.io")
+	
 	// Initialize proxy handler
-	proxyHandler := handlers.NewProxyHandler(logger, jwtService, dbManager)
+	proxyHandler := handlers.NewProxyHandler(logger, jwtService, dbManager, regionalRouter)
 
 	// Initialize Gin router
 	router := gin.New()
@@ -66,6 +70,9 @@ func main() {
 	// Health check endpoint
 	router.GET("/health", proxyHandler.HealthCheck())
 
+	// Custom domain routing - handles requests from tenant custom domains
+	router.Any("/", proxyHandler.HandleCustomDomain())
+
 	// API Gateway routes
 	v1 := router.Group("/api/v1")
 	{
@@ -77,6 +84,14 @@ func main() {
 		tenant := v1.Group("/tenant")
 		tenant.Any("/*path", proxyHandler.TenantProxy())
 		
+		// Database management (auth required)
+		database := v1.Group("/database")
+		database.Any("/*path", proxyHandler.ServiceProxy("database"))
+		
+		// Platform admin (auth required)
+		platform := v1.Group("/platform")
+		platform.Any("/*path", proxyHandler.ServiceProxy("platform"))
+		
 		// Business services (auth + tenant required)
 		ticket := v1.Group("/ticket")
 		ticket.Any("/*path", proxyHandler.ServiceProxy("ticket"))
@@ -87,17 +102,26 @@ func main() {
 		chat := v1.Group("/chat")
 		chat.Any("/*path", proxyHandler.ServiceProxy("chat"))
 		
+		notification := v1.Group("/notification")
+		notification.Any("/*path", proxyHandler.ServiceProxy("notification"))
+		
+		// Regional routing endpoint  
+		v1.GET("/regional-redirect", proxyHandler.GetRegionalRedirect())
+		
 		// Gateway status endpoint
 		v1.GET("/status", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"message": "API Gateway v1 is running",
 				"version": "1.0.0",
 				"services": map[string]string{
-					"auth":    "http://localhost:8002",
-					"tenant":  "http://localhost:8001",
-					"ticket":  "http://localhost:8004", 
-					"project": "http://localhost:8005",
-					"chat":    "http://localhost:8006",
+					"auth":         "http://localhost:8002",
+					"tenant":       "http://localhost:8001",
+					"database":     "http://localhost:8003",
+					"platform":     "http://localhost:8014",
+					"ticket":       "http://localhost:8004", 
+					"project":      "http://localhost:8005",
+					"chat":         "http://localhost:8006",
+					"notification": "http://localhost:8007",
 				},
 			})
 		})
