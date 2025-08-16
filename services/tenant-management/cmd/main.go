@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -29,30 +30,16 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 	
-	// Initialize database connection
-	db, err := database.NewPostgresConnection(
-		cfg.MasterDatabase.MasterHost,
-		cfg.MasterDatabase.MasterPort,
-		cfg.MasterDatabase.MasterUser,
-		cfg.MasterDatabase.MasterPassword,
-		cfg.MasterDatabase.MasterDatabase,
-		cfg.MasterDatabase.SSLMode,
-	)
+	// Parse master database port
+	port, err := strconv.Atoi(cfg.MasterDatabase.MasterPort)
 	if err != nil {
-		logger.Fatal("Failed to connect to database", zap.Error(err))
+		logger.Fatal("Invalid master database port", zap.Error(err))
 	}
-
-	// Initialize JWT service
-	jwtService := auth.NewJWTService(
-		cfg.EncryptionKey, // Use encryption key for JWT secret for now
-		24*time.Hour,      // 24 hours access token
-		7*24*time.Hour,    // 7 days refresh token
-	)
 
 	// Initialize database manager for multi-tenant support
 	dbManager, err := database.NewDatabaseManager(database.Config{
 		Host:     cfg.MasterDatabase.MasterHost,
-		Port:     5432,
+		Port:     port,
 		User:     cfg.MasterDatabase.MasterUser,
 		Password: cfg.MasterDatabase.MasterPassword,
 		DBName:   cfg.MasterDatabase.MasterDatabase,
@@ -61,10 +48,21 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to create database manager", zap.Error(err))
 	}
+
+	// Initialize JWT service - use same secret as auth service
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "your-super-secret-jwt-key-change-in-production"
+	}
+	jwtService := auth.NewJWTService(
+		jwtSecret,    // Use same JWT secret as auth service
+		24*time.Hour, // 24 hours access token
+		7*24*time.Hour, // 7 days refresh token
+	)
 	
 	// Initialize repository, service, and handler
-	tenantRepo := repositories.NewTenantRepository(db)
-	tenantService := services.NewTenantService(tenantRepo)
+	tenantRepo := repositories.NewTenantRepository(dbManager.GetMasterDB())
+	tenantService := services.NewTenantService(tenantRepo, dbManager)
 	tenantHandler := handlers.NewTenantHandler(tenantService)
 
 	// Initialize Gin router

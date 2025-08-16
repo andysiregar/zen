@@ -13,27 +13,36 @@ import (
 	"github.com/zen/shared/pkg/auth"
 	"github.com/zen/shared/pkg/database"
 	"github.com/zen/shared/pkg/middleware"
+	"github.com/zen/shared/pkg/models"
+	"github.com/zen/shared/pkg/routing"
 	"github.com/zen/shared/pkg/utils"
 )
 
 type ProxyHandler struct {
-	logger      *zap.Logger
-	jwtService  *auth.JWTService
-	dbManager   *database.DatabaseManager
-	serviceURLs map[string]string
+	logger         *zap.Logger
+	jwtService     *auth.JWTService
+	dbManager      *database.DatabaseManager
+	regionalRouter *routing.RegionalRouter
+	serviceURLs    map[string]string
 }
 
-func NewProxyHandler(logger *zap.Logger, jwtService *auth.JWTService, dbManager *database.DatabaseManager) *ProxyHandler {
+func NewProxyHandler(logger *zap.Logger, jwtService *auth.JWTService, dbManager *database.DatabaseManager, regionalRouter *routing.RegionalRouter) *ProxyHandler {
 	return &ProxyHandler{
-		logger:     logger,
-		jwtService: jwtService,
-		dbManager:  dbManager,
+		logger:         logger,
+		jwtService:     jwtService,
+		dbManager:      dbManager,
+		regionalRouter: regionalRouter,
 		serviceURLs: map[string]string{
-			"auth":    "http://localhost:8002",
-			"tenant":  "http://localhost:8001", 
-			"ticket":  "http://localhost:8004",
-			"project": "http://localhost:8005",
-			"chat":    "http://localhost:8006",
+			"auth":         "http://localhost:8002",
+			"tenant":       "http://localhost:8001", 
+			"database":     "http://localhost:8003",
+			"platform":     "http://localhost:8014",
+			"ticket":       "http://localhost:8004",
+			"project":      "http://localhost:8005",
+			"chat":         "http://localhost:8006",
+			"notification": "http://localhost:8007",
+			"reporting":    "http://localhost:8012",
+			"billing":      "http://localhost:8013",
 		},
 	}
 }
@@ -66,14 +75,9 @@ func (h *ProxyHandler) ProxyToService(serviceName string) gin.HandlerFunc {
 			req.URL.Host = target.Host
 			req.URL.Scheme = target.Scheme
 			
-			// Remove the service prefix from the path
-			req.URL.Path = strings.TrimPrefix(req.URL.Path, fmt.Sprintf("/api/v1/%s", serviceName))
-			if req.URL.Path == "" {
-				req.URL.Path = "/"
-			}
-			
-			// Add API prefix for the target service
-			req.URL.Path = "/api/v1" + req.URL.Path
+			// For auth service, keep the full path as-is since it expects /api/v1/auth/*
+			// For other services, we may need different path handling
+			// Currently just pass through the full path
 			
 			// Forward headers
 			req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
@@ -209,4 +213,50 @@ func (h *ProxyHandler) checkServiceHealth(serviceURL string) bool {
 	defer resp.Body.Close()
 	
 	return resp.StatusCode == http.StatusOK
+}
+
+// HandleCustomDomain handles requests from tenant custom domains
+func (h *ProxyHandler) HandleCustomDomain() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		host := c.Request.Host
+		
+		// Check if it's a custom domain
+		isCustom, domain := h.regionalRouter.ParseCustomDomain(host)
+		if !isCustom {
+			// Not a custom domain, handle normally
+			c.Next()
+			return
+		}
+
+		// For custom domains, redirect to authentication
+		utils.SuccessResponse(c, gin.H{
+			"custom_domain": domain,
+			"auth_url":     "https://chilldesk.io/auth/login",
+			"message":      "Please authenticate through the main portal",
+		}, "Custom domain detected")
+	}
+}
+
+// GetRegionalRedirect provides regional routing information after authentication
+func (h *ProxyHandler) GetRegionalRedirect() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tenantSlug := c.Query("tenant")
+		if tenantSlug == "" {
+			utils.BadRequestResponse(c, "tenant parameter required")
+			return
+		}
+
+		// TODO: Look up tenant in database to get region
+		// For now, return US region by default
+		region := "us"
+		
+		regionalEndpoint := h.regionalRouter.GetRegionalEndpoint(models.TenantRegionUS)
+		
+		utils.SuccessResponse(c, gin.H{
+			"tenant":            tenantSlug,
+			"region":           region,
+			"regional_endpoint": regionalEndpoint,
+			"portal_url":       fmt.Sprintf("%s/tenant/%s", regionalEndpoint, tenantSlug),
+		}, "Regional routing information")
+	}
 }

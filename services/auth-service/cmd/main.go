@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/zen/shared/pkg/auth"
 	"github.com/zen/shared/pkg/database"
 	"github.com/zen/shared/pkg/middleware"
+	"github.com/zen/shared/pkg/routing"
 )
 
 func main() {
@@ -29,17 +31,23 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 	
-	// Initialize database connection
-	db, err := database.NewPostgresConnection(
-		cfg.MasterDatabase.MasterHost,
-		cfg.MasterDatabase.MasterPort,
-		cfg.MasterDatabase.MasterUser,
-		cfg.MasterDatabase.MasterPassword,
-		cfg.MasterDatabase.MasterDatabase,
-		cfg.MasterDatabase.SSLMode,
-	)
+	// Parse master database port
+	port, err := strconv.Atoi(cfg.MasterDatabase.MasterPort)
 	if err != nil {
-		logger.Fatal("Failed to connect to database", zap.Error(err))
+		logger.Fatal("Invalid master database port", zap.Error(err))
+	}
+
+	// Initialize database manager
+	dbManager, err := database.NewDatabaseManager(database.Config{
+		Host:     cfg.MasterDatabase.MasterHost,
+		Port:     port,
+		User:     cfg.MasterDatabase.MasterUser,
+		Password: cfg.MasterDatabase.MasterPassword,
+		DBName:   cfg.MasterDatabase.MasterDatabase,
+		SSLMode:  cfg.MasterDatabase.SSLMode,
+	}, cfg.EncryptionKey)
+	if err != nil {
+		logger.Fatal("Failed to create database manager", zap.Error(err))
 	}
 
 	// Initialize JWT service
@@ -49,10 +57,13 @@ func main() {
 		time.Duration(cfg.JWT.RefreshTokenTTL)*time.Hour,
 	)
 
+	// Initialize regional router
+	regionalRouter := routing.NewRegionalRouter("chilldesk.io")
+	
 	// Initialize repository, service, and handler
-	userRepo := repositories.NewUserRepository(db)
+	userRepo := repositories.NewUserRepository(dbManager.GetMasterDB())
 	authService := services.NewAuthService(userRepo)
-	authHandler := handlers.NewAuthHandler(authService, jwtService)
+	authHandler := handlers.NewAuthHandler(authService, jwtService, regionalRouter)
 
 	// Initialize Gin router
 	router := gin.New()
@@ -83,9 +94,11 @@ func main() {
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/login-redirect", authHandler.LoginWithRedirect) // Regional routing support
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/refresh", authHandler.RefreshToken)
 			auth.POST("/logout", authHandler.Logout)
+			auth.GET("/custom-domain", authHandler.HandleCustomDomain) // Custom domain detection
 		}
 
 		// User management routes (require authentication)

@@ -2,7 +2,7 @@
 
 # Variables
 DOCKER_COMPOSE_DEV = deployments/docker/docker-compose.dev.yml
-SERVICES := api-gateway tenant-management database-management auth-service ticket-service project-service chat-service notification-service file-storage integration-service reporting-service billing-service background-jobs monitoring-service
+SERVICES := api-gateway tenant-management database-management auth-service ticket-service project-service chat-service notification-service file-storage integration-service reporting-service billing-service background-jobs monitoring-service platform-admin
 
 # Colors for output
 RED := \033[31m
@@ -141,6 +141,9 @@ run-tenant-service: ## Run Tenant Management service
 
 run-auth-service: ## Run Authentication service
 	cd services/auth-service && go run cmd/main.go
+
+run-platform-admin: ## Run Platform Admin service
+	cd services/platform-admin && go run cmd/main.go
 
 # Setup Commands
 setup: ## Setup development environment from scratch
