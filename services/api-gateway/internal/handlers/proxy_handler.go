@@ -41,6 +41,8 @@ func NewProxyHandler(logger *zap.Logger, jwtService *auth.JWTService, dbManager 
 			"project":      "http://localhost:8005",
 			"chat":         "http://localhost:8006",
 			"notification": "http://localhost:8007",
+			"reporting":    "http://localhost:8012",
+			"billing":      "http://localhost:8013",
 		},
 	}
 }
@@ -73,14 +75,9 @@ func (h *ProxyHandler) ProxyToService(serviceName string) gin.HandlerFunc {
 			req.URL.Host = target.Host
 			req.URL.Scheme = target.Scheme
 			
-			// Remove the service prefix from the path
-			req.URL.Path = strings.TrimPrefix(req.URL.Path, fmt.Sprintf("/api/v1/%s", serviceName))
-			if req.URL.Path == "" {
-				req.URL.Path = "/"
-			}
-			
-			// Add API prefix for the target service
-			req.URL.Path = "/api/v1" + req.URL.Path
+			// For auth service, keep the full path as-is since it expects /api/v1/auth/*
+			// For other services, we may need different path handling
+			// Currently just pass through the full path
 			
 			// Forward headers
 			req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))

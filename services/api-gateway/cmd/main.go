@@ -105,6 +105,13 @@ func main() {
 		notification := v1.Group("/notification")
 		notification.Any("/*path", proxyHandler.ServiceProxy("notification"))
 		
+		// Phase 3 services (auth + tenant required)
+		reporting := v1.Group("/reporting")
+		reporting.Any("/*path", proxyHandler.ServiceProxy("reporting"))
+		
+		billing := v1.Group("/billing")
+		billing.Any("/*path", proxyHandler.ServiceProxy("billing"))
+		
 		// Regional routing endpoint  
 		v1.GET("/regional-redirect", proxyHandler.GetRegionalRedirect())
 		
@@ -122,6 +129,8 @@ func main() {
 					"project":      "http://localhost:8005",
 					"chat":         "http://localhost:8006",
 					"notification": "http://localhost:8007",
+					"reporting":    "http://localhost:8012",
+					"billing":      "http://localhost:8013",
 				},
 			})
 		})
